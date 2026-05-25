@@ -1,5 +1,21 @@
 /* global React */
-const { useState, useMemo, useEffect } = React;
+const { useState, useMemo, useEffect, useRef, useCallback } = React;
+
+// ---------- localStorage hooks ----------
+function useLocalStorage(key, initial) {
+  const [value, setValue] = useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw != null ? JSON.parse(raw) : initial;
+    } catch (e) {
+      return initial;
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }, [key, value]);
+  return [value, setValue];
+}
 
 // ---------- helpers ----------
 function formatPrice(p, label) {
@@ -70,15 +86,132 @@ function Tag({ id }) {
   return <span className="tag" data-tag={id}>{label}</span>;
 }
 
+// ---------- Star (favorite) ----------
+function FavStar({ active, onToggle, name }) {
+  return (
+    <button
+      type="button"
+      className={"fav-star" + (active ? " on" : "")}
+      aria-pressed={active}
+      aria-label={active ? `Убрать ${name} из избранного` : `Добавить ${name} в избранное`}
+      title={active ? "В избранном" : "В избранное"}
+      onClick={onToggle}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z"/>
+      </svg>
+    </button>
+  );
+}
+
+// ---------- Comment line ----------
+function CommentLine({ value, onChange, name }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || "");
+  const taRef = useRef(null);
+
+  useEffect(() => { setDraft(value || ""); }, [value]);
+  useEffect(() => {
+    if (editing && taRef.current) {
+      const el = taRef.current;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 240) + "px";
+    }
+  }, [editing]);
+
+  const commit = useCallback(() => {
+    const next = draft.trim();
+    if (next !== (value || "").trim()) onChange(next);
+    setEditing(false);
+  }, [draft, value, onChange]);
+
+  const cancel = () => {
+    setDraft(value || "");
+    setEditing(false);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); cancel(); }
+    else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); }
+  };
+
+  const onInput = (e) => {
+    setDraft(e.target.value);
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 240) + "px";
+  };
+
+  if (editing) {
+    return (
+      <div className="comment-edit">
+        <textarea
+          ref={taRef}
+          className="comment-textarea"
+          value={draft}
+          onChange={onInput}
+          onBlur={commit}
+          onKeyDown={onKeyDown}
+          placeholder={`Заметка о ${name}…`}
+          rows={1}
+        />
+        <span className="comment-hint">↵ Cmd+Enter — сохранить, Esc — отмена</span>
+      </div>
+    );
+  }
+
+  if (value) {
+    return (
+      <div className="comment-line has-note" onClick={() => setEditing(true)} role="button" tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setEditing(true); } }}>
+        <svg className="comment-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span className="comment-text">{value}</span>
+        <span className="comment-edit-hint">— кликните для редактирования</span>
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" className="comment-add" onClick={() => setEditing(true)}>
+      <span className="comment-add-plus">+</span> добавить заметку
+    </button>
+  );
+}
+
+// ---------- VPN cell ----------
+function VpnCell({ free }) {
+  if (free === undefined || free === null) {
+    return <span className="vpn vpn-unknown" title="Нет данных">—</span>;
+  }
+  if (free) {
+    return (
+      <span className="vpn vpn-yes" title="Доступен без VPN">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7"/></svg>
+        <span className="vpn-label">Да</span>
+      </span>
+    );
+  }
+  return (
+    <span className="vpn vpn-no" title="Требует VPN">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6 18 18"/><path d="M18 6 6 18"/></svg>
+      <span className="vpn-label">Нет</span>
+    </span>
+  );
+}
+
 // ---------- Table Row ----------
-function ToolRow({ tool, showModels }) {
+function ToolRow({ tool, showModels, isFav, onToggleFav, comment, onComment }) {
   const basic = formatPrice(tool.basicPrice);
   const rel = relativeTime(tool.lastParsedAt);
   const fresh = parsedFreshness(tool.lastParsedAt);
   const stamp = tool.lastParsedAt ? new Date(tool.lastParsedAt).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" }) : "";
 
   return (
-    <tr>
+    <tr className={comment ? "has-comment" : ""}>
+      <td className="fav-cell">
+        <FavStar active={isFav} onToggle={onToggleFav} name={tool.name} />
+      </td>
       <td className="logo-cell"><Logo tool={tool} /></td>
       <td className="name-cell" data-label="Сервис">
         <div className="name-row">
@@ -93,6 +226,7 @@ function ToolRow({ tool, showModels }) {
           <span className="vendor">{tool.vendor}</span>
         </div>
         <div className="desc">{tool.description}</div>
+        <CommentLine value={comment} onChange={onComment} name={tool.name} />
       </td>
       <td className="price-cell" data-label="Базовый тариф">
         <span className={"price " + basic.cls}>
@@ -117,6 +251,9 @@ function ToolRow({ tool, showModels }) {
         ) : (
           <span className="free-no">Нет</span>
         )}
+      </td>
+      <td className="vpn-cell" data-label="Без VPN">
+        <VpnCell free={tool.vpnFree} />
       </td>
       {showModels && (
         <td className="models-cell" data-label="Моделей">
@@ -163,7 +300,24 @@ function App() {
   const [tagFilters, setTagFilters] = useState([]); // capability tags
   const [freeOnly, setFreeOnly] = useState(false);
   const [dailyOnly, setDailyOnly] = useState(false);
+  const [noVpnOnly, setNoVpnOnly] = useState(false);
   const [sort, setSort] = useState({ key: "name", dir: "asc" });
+
+  // local-only user state
+  const [favorites, setFavorites] = useLocalStorage("aitools.favorites", []);
+  const [comments, setComments] = useLocalStorage("aitools.comments", {});
+  const favSet = useMemo(() => new Set(favorites), [favorites]);
+
+  const toggleFav = (id) => {
+    setFavorites((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id)));
+  };
+  const updateComment = (id, text) => {
+    setComments((cur) => {
+      const next = { ...cur };
+      if (text) next[id] = text; else delete next[id];
+      return next;
+    });
+  };
 
   // theme + density on root
   useEffect(() => {
@@ -176,13 +330,13 @@ function App() {
 
   // counts per category
   const categoryCounts = useMemo(() => {
-    const map = { all: tools.length };
+    const map = { all: tools.length, favorites: favSet.size };
     for (const c of categories) {
-      if (c.id === "all") continue;
+      if (c.id === "all" || c.id === "favorites") continue;
       map[c.id] = tools.filter((x) => x.category === c.id).length;
     }
     return map;
-  }, [tools, categories]);
+  }, [tools, categories, favSet]);
 
   // available capability tags across all data
   const allTags = useMemo(() => {
@@ -194,9 +348,11 @@ function App() {
   const filtered = useMemo(() => {
     let rows = tools.slice();
 
-    if (category !== "all") rows = rows.filter((r) => r.category === category);
+    if (category === "favorites") rows = rows.filter((r) => favSet.has(r.id));
+    else if (category !== "all") rows = rows.filter((r) => r.category === category);
     if (freeOnly) rows = rows.filter((r) => r.freeTier);
     if (dailyOnly) rows = rows.filter((r) => r.freeTier && r.freeDaily);
+    if (noVpnOnly) rows = rows.filter((r) => r.vpnFree);
     if (tagFilters.length) rows = rows.filter((r) => tagFilters.every((tg) => r.tags.includes(tg)));
     if (query.trim()) {
       const q = query.toLowerCase().trim();
@@ -220,12 +376,14 @@ function App() {
           return ((a.models ?? -1) - (b.models ?? -1)) * dir;
         case "free":
           return ((a.freeTier ? 1 : 0) - (b.freeTier ? 1 : 0)) * dir;
+        case "vpn":
+          return ((a.vpnFree ? 1 : 0) - (b.vpnFree ? 1 : 0)) * dir;
         default:
           return 0;
       }
     });
     return rows;
-  }, [tools, category, query, tagFilters, freeOnly, dailyOnly, sort]);
+  }, [tools, category, query, tagFilters, freeOnly, dailyOnly, noVpnOnly, sort, favSet]);
 
   const showModels = category === "aggregator" || t.alwaysShowModels;
 
@@ -233,7 +391,7 @@ function App() {
     setSort((s) =>
       s.key === key
         ? { key, dir: s.dir === "asc" ? "desc" : "asc" }
-        : { key, dir: key === "basicPrice" ? "asc" : key === "models" ? "desc" : "asc" },
+        : { key, dir: key === "basicPrice" ? "asc" : key === "models" || key === "vpn" ? "desc" : "asc" },
     );
   };
 
@@ -245,6 +403,7 @@ function App() {
     setTagFilters([]);
     setFreeOnly(false);
     setDailyOnly(false);
+    setNoVpnOnly(false);
     setQuery("");
   };
 
@@ -270,15 +429,24 @@ function App() {
 
       {/* Tabs */}
       <nav className="tabs" role="tablist">
-        {categories.map((c) => (
+        {[
+          ...categories.slice(0, 1),
+          { id: "favorites", label: "Избранное", hint: "ваш личный список", icon: "star" },
+          ...categories.slice(1),
+        ].map((c) => (
           <button
             key={c.id}
             type="button"
             role="tab"
             aria-selected={category === c.id}
-            className={"tab" + (category === c.id ? " active" : "")}
+            className={"tab" + (category === c.id ? " active" : "") + (c.id === "favorites" ? " tab-fav" : "")}
             onClick={() => setCategory(c.id)}
           >
+            {c.icon === "star" && (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: 2 }}>
+                <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z"/>
+              </svg>
+            )}
             <span>{c.label}</span>
             <span className="tab-count">{categoryCounts[c.id] ?? 0}</span>
           </button>
@@ -315,6 +483,15 @@ function App() {
           <span className="pill-dot" /> Ежедневное обновление
         </button>
 
+        <button
+          type="button"
+          className={"toggle-pill" + (noVpnOnly ? " on" : "")}
+          onClick={() => setNoVpnOnly((v) => !v)}
+          aria-pressed={noVpnOnly}
+        >
+          <span className="pill-dot" /> Без VPN
+        </button>
+
         <div className="toolbar-spacer" />
 
         <div className="toolbar-group">
@@ -332,6 +509,7 @@ function App() {
               <option value="basicPrice:desc">Базовый тариф ↓ (дорого → дёшево)</option>
               <option value="models:desc">Кол-во моделей ↓</option>
               <option value="free:desc">Сначала с бесплатным</option>
+              <option value="vpn:desc">Сначала без VPN</option>
             </select>
           </div>
         </div>
@@ -351,7 +529,7 @@ function App() {
             {window.AI_TAG_LABELS[tg] || tg}
           </button>
         ))}
-        {(tagFilters.length > 0 || freeOnly || dailyOnly || query) && (
+        {(tagFilters.length > 0 || freeOnly || dailyOnly || noVpnOnly || query) && (
           <button type="button" className="chip-clear" onClick={clearFilters}>
             Сбросить фильтры
           </button>
@@ -362,24 +540,43 @@ function App() {
       <div className="table-wrap">
         {filtered.length === 0 ? (
           <div className="empty">
-            <div className="empty-title">Ничего не найдено</div>
-            <div>Попробуйте сбросить фильтры или изменить запрос.</div>
+            {category === "favorites" && favSet.size === 0 ? (
+              <>
+                <div className="empty-title">В избранном пока пусто</div>
+                <div>Нажмите ★ рядом с сервисом, чтобы добавить его сюда.</div>
+              </>
+            ) : (
+              <>
+                <div className="empty-title">Ничего не найдено</div>
+                <div>Попробуйте сбросить фильтры или изменить запрос.</div>
+              </>
+            )}
           </div>
         ) : (
           <table className="table">
             <thead>
               <tr>
+                <th style={{ width: 36 }} aria-label="Избранное"></th>
                 <th style={{ width: 56 }}></th>
                 <SortableTH label="Сервис" sortKey="name" currentSort={sort} onSort={onSort} />
                 <SortableTH label="Базовый тариф" sortKey="basicPrice" currentSort={sort} onSort={onSort} />
                 <SortableTH label="Бесплатно" sortKey="free" currentSort={sort} onSort={onSort} />
+                <SortableTH label="Без VPN" sortKey="vpn" currentSort={sort} onSort={onSort} />
                 {showModels && <SortableTH label="Моделей" sortKey="models" currentSort={sort} onSort={onSort} />}
                 <th>Возможности</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((tool) => (
-                <ToolRow key={tool.id} tool={tool} showModels={showModels} />
+                <ToolRow
+                  key={tool.id}
+                  tool={tool}
+                  showModels={showModels}
+                  isFav={favSet.has(tool.id)}
+                  onToggleFav={() => toggleFav(tool.id)}
+                  comment={comments[tool.id] || ""}
+                  onComment={(text) => updateComment(tool.id, text)}
+                />
               ))}
             </tbody>
           </table>
