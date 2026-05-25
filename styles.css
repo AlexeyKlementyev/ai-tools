@@ -73,18 +73,6 @@
   flex-shrink: 0;
 }
 .comment-line .comment-text { white-space: pre-wrap; }
-.comment-line .comment-edit-hint {
-  font-style: normal;
-  color: var(--fg-faint);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  opacity: 0;
-  transition: opacity .15s;
-  white-space: nowrap;
-  align-self: center;
-}
-.comment-line.has-note:hover .comment-edit-hint { opacity: 1; }
 .comment-line:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
 
 .comment-add {
@@ -544,7 +532,14 @@ button { font-family: inherit; }
 }
 
 /* logo */
-.logo-cell { width: 1%; padding-right: 0 !important; }
+.logo-cell {
+  width: 1%;
+  padding-right: 0 !important;
+  /* keep logo pinned to the top, aligned with the service title,
+     so it doesn't drift when the row grows (e.g. when a comment is added) */
+  vertical-align: top !important;
+}
+.name-cell { vertical-align: top !important; }
 .logo {
   width: 38px;
   height: 38px;

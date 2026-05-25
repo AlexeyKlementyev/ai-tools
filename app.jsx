@@ -167,7 +167,6 @@ function CommentLine({ value, onChange, name }) {
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setEditing(true); } }}>
         <svg className="comment-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span className="comment-text">{value}</span>
-        <span className="comment-edit-hint">— кликните для редактирования</span>
       </div>
     );
   }
